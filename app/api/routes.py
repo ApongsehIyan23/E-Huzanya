@@ -188,6 +188,10 @@ async def ingest_incident(
     # Cache for real-time operations
     active_incidents_cache[canonical["ehz_incident_id"]] = canonical
 
+    # Broadcast new incident to all connected WebSocket clients
+    from app.api.websocket import broadcast_incident_created
+    await broadcast_incident_created(canonical)
+
     # Store in simulator inbox (MVP: simulates webhook push to destination)
     simulator_inbox[dest_agency].append({
         "received_at": datetime.now(timezone.utc).isoformat(),
@@ -443,6 +447,10 @@ async def declare_clearance(
     if ehz_incident_id in active_incidents_cache:
         active_incidents_cache[ehz_incident_id]["clearance_handshake"] = incident.clearance_handshake
 
+    # Broadcast clearance declaration via WebSocket
+    from app.api.websocket import broadcast_clearance_declared
+    await broadcast_clearance_declared(ehz_incident_id, declaring_agency, scope)
+
     return {
         "status": "AWAITING_ACKNOWLEDGMENT",
         "ehz_incident_id": ehz_incident_id,
@@ -533,6 +541,10 @@ async def acknowledge_clearance(
     # Update cache
     if ehz_incident_id in active_incidents_cache:
         active_incidents_cache[ehz_incident_id]["clearance_handshake"] = incident.clearance_handshake
+
+    # Broadcast clearance acknowledgment via WebSocket
+    from app.api.websocket import broadcast_clearance_acknowledged
+    await broadcast_clearance_acknowledged(ehz_incident_id, acknowledging_agency, scope)
 
     return {
         "status": "CONFIRMED",

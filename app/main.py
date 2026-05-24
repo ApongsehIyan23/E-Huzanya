@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.session import init_db
 from app.api.routes import router
+from app.api.websocket import router as ws_router
 
 
 @asynccontextmanager
@@ -60,6 +61,7 @@ app.add_middleware(
 
 # Mount routes
 app.include_router(router)
+app.include_router(ws_router)
 
 
 # Health check (no auth required)
