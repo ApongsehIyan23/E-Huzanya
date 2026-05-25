@@ -13,13 +13,18 @@ Access ReDoc:
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from app.db.session import init_db
 from app.api.routes import router
 from app.api.websocket import router as ws_router
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 @asynccontextmanager
@@ -72,3 +77,13 @@ async def health_check():
         "service": "E-Huzanya Gateway",
         "version": "0.1.0-mvp",
     }
+
+
+# Serve the tactical dashboard
+@app.get("/")
+async def serve_dashboard():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+# Mount static files
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

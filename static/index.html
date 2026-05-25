@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-HUZANYA GATEWAY — Tactical Operations Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --bg-deepest: #080b12;
+            --bg-panel: #0d1117;
+            --bg-panel-hover: #111820;
+            --border-tactical: #1a2332;
+            --border-glow: #1e3a5f;
+            --rnp-accent: #0ea5e9;
+            --rnp-accent-dim: rgba(14, 165, 233, 0.15);
+            --rnp-accent-glow: rgba(14, 165, 233, 0.4);
+            --samu-accent: #ef4444;
+            --samu-accent-dim: rgba(239, 68, 68, 0.15);
+            --samu-accent-glow: rgba(239, 68, 68, 0.4);
+            --warning-amber: #f59e0b;
+            --warning-amber-dim: rgba(245, 158, 11, 0.15);
+            --confirmed-green: #22c55e;
+            --confirmed-green-dim: rgba(34, 197, 94, 0.15);
+            --critical-red: #dc2626;
+            --text-primary: #e2e8f0;
+            --text-secondary: #64748b;
+            --text-data: #4ade80;
+            --text-muted: #334155;
+            --font-display: 'Oxanium', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+        *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+        html, body { height:100%; overflow:hidden; background:var(--bg-deepest); color:var(--text-primary); font-family:var(--font-mono); font-size:13px; }
+        body::after { content:''; position:fixed; top:0; left:0; width:100%; height:100%; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px); pointer-events:none; z-index:9999; }
+
+        /* ============ BOOT SCREEN ============ */
+        .boot-screen { position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-deepest); z-index:10000; display:flex; align-items:center; justify-content:center; flex-direction:column; transition:opacity 0.5s; }
+        .boot-screen.hidden { opacity:0; pointer-events:none; }
+        .boot-text { font-family:var(--font-mono); font-size:13px; color:var(--text-data); text-align:left; line-height:1.8; }
+        .boot-cursor { display:inline-block; width:8px; height:15px; background:var(--text-data); animation:blink-cursor 0.7s step-end infinite; vertical-align:text-bottom; margin-left:2px; }
+        @keyframes blink-cursor { 0%,100%{opacity:1;} 50%{opacity:0;} }
+
+        /* ============ EVENT SELECTOR OVERLAY ============ */
+        .event-selector { position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-deepest); z-index:9000; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:opacity 0.6s; }
+        .event-selector.hidden { opacity:0; pointer-events:none; }
+        .event-selector-title { font-family:var(--font-display); font-weight:700; font-size:24px; letter-spacing:6px; text-transform:uppercase; background:linear-gradient(90deg,var(--rnp-accent),var(--warning-amber),var(--samu-accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:8px; }
+        .event-selector-subtitle { font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); letter-spacing:2px; text-transform:uppercase; margin-bottom:40px; }
+        .event-selector-grid { display:flex; gap:20px; max-width:1000px; }
+        .event-select-card { background:var(--bg-panel); border:1px solid var(--border-tactical); padding:28px 24px; width:300px; cursor:pointer; transition:all 0.3s; position:relative; overflow:hidden; clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px)); }
+        .event-select-card::before { content:''; position:absolute; top:0; left:0; width:4px; height:100%; transition:all 0.3s; }
+        .event-select-card:nth-child(1)::before,.event-select-card:nth-child(3)::before { background:var(--rnp-accent); opacity:0.5; }
+        .event-select-card:nth-child(2)::before { background:var(--samu-accent); opacity:0.5; }
+        .event-select-card:hover { border-color:var(--border-glow); transform:translateY(-4px); }
+        .event-select-card:nth-child(1):hover,.event-select-card:nth-child(3):hover { background:var(--rnp-accent-dim); box-shadow:0 8px 32px rgba(14,165,233,0.15); }
+        .event-select-card:nth-child(1):hover::before,.event-select-card:nth-child(3):hover::before { opacity:1; }
+        .event-select-card:nth-child(2):hover { background:var(--samu-accent-dim); box-shadow:0 8px 32px rgba(239,68,68,0.15); }
+        .event-select-card:nth-child(2):hover::before { opacity:1; }
+        .event-select-card .esc-number { font-family:var(--font-display); font-weight:800; font-size:42px; color:var(--text-muted); margin-bottom:8px; line-height:1; }
+        .event-select-card .esc-name { font-family:var(--font-display); font-weight:700; font-size:15px; letter-spacing:2px; text-transform:uppercase; color:var(--text-primary); margin-bottom:6px; }
+        .event-select-card .esc-type { font-family:var(--font-mono); font-size:11px; color:var(--text-data); margin-bottom:10px; }
+        .event-select-card .esc-desc { font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); line-height:1.5; margin-bottom:12px; }
+        .event-select-card .esc-direction { font-family:var(--font-display); font-weight:600; font-size:10px; letter-spacing:2px; text-transform:uppercase; padding:4px 10px; display:inline-block; }
+        .esc-direction.from-rnp { color:var(--rnp-accent); border:1px solid rgba(14,165,233,0.3); background:var(--rnp-accent-dim); }
+        .esc-direction.from-samu { color:var(--samu-accent); border:1px solid rgba(239,68,68,0.3); background:var(--samu-accent-dim); }
+        .event-select-card .esc-severity { position:absolute; top:12px; right:16px; font-family:var(--font-display); font-weight:700; font-size:9px; letter-spacing:1px; padding:3px 8px; background:rgba(220,38,38,0.2); color:var(--critical-red); border:1px solid rgba(220,38,38,0.3); }
+
+        /* ============ HEADER BAR ============ */
+        .header-bar { height:48px; background:linear-gradient(180deg,#0f1923 0%,var(--bg-panel) 100%); border-bottom:1px solid var(--border-tactical); display:flex; align-items:center; justify-content:space-between; padding:0 20px; position:relative; }
+        .header-bar::after { content:''; position:absolute; bottom:-1px; left:0; width:100%; height:1px; background:linear-gradient(90deg,transparent 0%,var(--rnp-accent) 20%,var(--warning-amber) 50%,var(--samu-accent) 80%,transparent 100%); opacity:0.5; }
+        .header-title { font-family:var(--font-display); font-weight:700; font-size:16px; letter-spacing:4px; text-transform:uppercase; background:linear-gradient(90deg,var(--rnp-accent),var(--warning-amber),var(--samu-accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+        .header-status { display:flex; align-items:center; gap:16px; }
+        .status-indicator { display:flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px; }
+        .status-dot { width:8px; height:8px; border-radius:50%; background:var(--confirmed-green); animation:pulse-dot 2s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%,100%{opacity:1;box-shadow:0 0 4px var(--confirmed-green);} 50%{opacity:0.5;box-shadow:0 0 8px var(--confirmed-green);} }
+        .btn-reset { font-family:var(--font-display); font-weight:600; font-size:11px; letter-spacing:2px; text-transform:uppercase; padding:6px 16px; background:transparent; color:var(--critical-red); border:1px solid rgba(220,38,38,0.4); cursor:pointer; transition:all 0.2s; clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%); }
+        .btn-reset:hover { background:rgba(220,38,38,0.15); border-color:var(--critical-red); box-shadow:0 0 12px rgba(220,38,38,0.3); }
+        .header-time { font-family:var(--font-mono); font-size:12px; color:var(--text-data); letter-spacing:1px; }
+
+        /* ============ MAIN LAYOUT ============ */
+        .main-container { display:grid; grid-template-columns:280px 1fr 280px; height:calc(100vh - 48px - 44px); gap:1px; background:var(--border-tactical); }
+        .dispatch-panel { background:var(--bg-panel); display:flex; flex-direction:column; overflow:hidden; }
+        .panel-header { padding:12px 16px; border-bottom:1px solid var(--border-tactical); display:flex; align-items:center; gap:10px; }
+        .panel-header .agency-badge { font-family:var(--font-display); font-weight:700; font-size:13px; letter-spacing:3px; text-transform:uppercase; padding:4px 12px; clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%); }
+        .panel-rnp .agency-badge { background:var(--rnp-accent-dim); color:var(--rnp-accent); border:1px solid rgba(14,165,233,0.3); }
+        .panel-samu .agency-badge { background:var(--samu-accent-dim); color:var(--samu-accent); border:1px solid rgba(239,68,68,0.3); }
+        .panel-header .panel-label { font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:1px; }
+        .section-label { font-family:var(--font-display); font-weight:600; font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--text-secondary); padding:10px 16px 6px; display:flex; align-items:center; gap:8px; }
+        .section-label::before { content:'▌'; font-size:8px; }
+        .panel-rnp .section-label::before { color:var(--rnp-accent); }
+        .panel-samu .section-label::before { color:var(--samu-accent); }
+
+        /* ============ FEED ============ */
+        .feed-container { flex:1; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:6px; }
+        .feed-container::-webkit-scrollbar { width:4px; }
+        .feed-container::-webkit-scrollbar-track { background:var(--bg-deepest); }
+        .feed-container::-webkit-scrollbar-thumb { background:var(--border-tactical); border-radius:2px; }
+        .feed-empty { display:flex; align-items:center; justify-content:center; height:100%; font-family:var(--font-mono); font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; }
+        .feed-card { background:var(--bg-deepest); border:1px solid var(--border-tactical); padding:10px 14px; animation:feed-slide-in 0.4s ease-out; position:relative; }
+        .feed-card::before { content:''; position:absolute; top:0; left:0; width:3px; height:100%; }
+        .feed-card.from-rnp::before { background:var(--rnp-accent); }
+        .feed-card.from-samu::before { background:var(--samu-accent); }
+        @keyframes feed-slide-in { from{opacity:0;transform:translateY(-10px);border-color:var(--warning-amber);} to{opacity:1;transform:translateY(0);border-color:var(--border-tactical);} }
+        .feed-card .feed-type { font-family:var(--font-display); font-weight:600; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+        .feed-card.from-rnp .feed-type { color:var(--rnp-accent); }
+        .feed-card.from-samu .feed-type { color:var(--samu-accent); }
+        .feed-card .feed-detail { font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); margin-top:4px; line-height:1.4; }
+        .feed-card .feed-time { font-family:var(--font-mono); font-size:9px; color:var(--text-muted); margin-top:4px; }
+
+        /* ============ ACTION BUTTONS ============ */
+        .action-bar { padding:8px 12px; border-top:1px solid var(--border-tactical); display:none; flex-direction:column; gap:4px; }
+        .action-bar.visible { display:flex; }
+        .btn-action { font-family:var(--font-display); font-weight:600; font-size:11px; letter-spacing:2px; text-transform:uppercase; padding:8px 16px; border:1px solid; cursor:pointer; transition:all 0.2s; background:transparent; width:100%; clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%); }
+        .btn-dispatch { color:var(--warning-amber); border-color:rgba(245,158,11,0.4); }
+        .btn-dispatch:hover { background:var(--warning-amber-dim); box-shadow:0 0 12px rgba(245,158,11,0.2); }
+        .btn-arrived { color:var(--text-data); border-color:rgba(74,222,128,0.4); }
+        .btn-arrived:hover { background:var(--confirmed-green-dim); box-shadow:0 0 12px rgba(34,197,94,0.2); }
+        .btn-clearance-ack { color:var(--confirmed-green); border-color:rgba(34,197,94,0.4); }
+        .btn-clearance-ack:hover { background:var(--confirmed-green-dim); }
+
+        /* ============ MAP ============ */
+        .map-panel { position:relative; background:var(--bg-deepest); }
+        #map { width:100%; height:100%; }
+        .leaflet-container { background:var(--bg-deepest) !important; }
+        .map-overlay-label { position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:1000; font-family:var(--font-display); font-weight:600; font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--text-secondary); background:rgba(8,11,18,0.85); padding:6px 20px; border:1px solid var(--border-tactical); backdrop-filter:blur(4px); }
+        .leaflet-control-attribution { background:rgba(8,11,18,0.8) !important; color:var(--text-muted) !important; font-family:var(--font-mono) !important; font-size:9px !important; }
+        .leaflet-control-attribution a { color:var(--text-secondary) !important; }
+        .vehicle-icon { background:none !important; border:none !important; }
+        @keyframes pulse-pin { 0%,100%{box-shadow:0 0 8px currentColor,0 0 16px currentColor;transform:scale(1);} 50%{box-shadow:0 0 16px currentColor,0 0 32px currentColor;transform:scale(1.1);} }
+
+        /* Tactical tooltip */
+        .tactical-tooltip { background:rgba(8,11,18,0.95) !important; border:1px solid var(--border-tactical) !important; color:var(--text-primary) !important; font-family:var(--font-mono) !important; border-radius:0 !important; padding:8px 12px !important; box-shadow:0 0 16px rgba(0,0,0,0.5) !important; }
+        .leaflet-tooltip-top::before { border-top-color:rgba(26,35,50,0.9) !important; }
+
+        /* ============ BOTTOM BAR ============ */
+        .bottom-bar { height:44px; background:linear-gradient(0deg,#0f1923 0%,var(--bg-panel) 100%); border-top:1px solid var(--border-tactical); display:flex; align-items:center; padding:0 20px; gap:24px; position:relative; }
+        .bottom-bar::before { content:''; position:absolute; top:-1px; left:0; width:100%; height:1px; background:linear-gradient(90deg,transparent 0%,var(--rnp-accent) 20%,var(--warning-amber) 50%,var(--samu-accent) 80%,transparent 100%); opacity:0.3; }
+        .clearance-status { display:flex; align-items:center; gap:10px; }
+        .clearance-label { font-family:var(--font-display); font-weight:600; font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--text-secondary); }
+        .clearance-state { font-family:var(--font-mono); font-weight:500; font-size:11px; letter-spacing:1px; padding:3px 12px; border:1px solid; }
+        .clearance-state.not-initiated { color:var(--text-muted); border-color:var(--text-muted); }
+        .clearance-state.awaiting { color:var(--warning-amber); border-color:rgba(245,158,11,0.4); background:var(--warning-amber-dim); animation:pulse-amber 1.5s ease-in-out infinite; }
+        @keyframes pulse-amber { 0%,100%{box-shadow:0 0 4px rgba(245,158,11,0.2);} 50%{box-shadow:0 0 12px rgba(245,158,11,0.4);} }
+        .clearance-state.confirmed { color:var(--confirmed-green); border-color:rgba(34,197,94,0.4); background:var(--confirmed-green-dim); }
+        .timeline-feed { flex:1; overflow:hidden; display:flex; align-items:center; gap:16px; }
+        .timeline-label { font-family:var(--font-display); font-weight:600; font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--text-secondary); white-space:nowrap; }
+        .timeline-entries { flex:1; overflow:hidden; font-family:var(--font-mono); font-size:10px; color:var(--text-data); white-space:nowrap; }
+
+        /* ============ TOAST ============ */
+        .toast-container { position:fixed; top:56px; right:16px; z-index:9000; display:flex; flex-direction:column; gap:8px; width:320px; }
+        .toast { background:var(--bg-panel); border:1px solid var(--border-tactical); padding:12px 16px; animation:toast-in 0.3s ease-out; position:relative; clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px)); }
+        .toast.alert { border-color:rgba(220,38,38,0.5); background:linear-gradient(135deg,rgba(220,38,38,0.1) 0%,var(--bg-panel) 100%); }
+        .toast.success { border-color:rgba(34,197,94,0.5); background:linear-gradient(135deg,rgba(34,197,94,0.1) 0%,var(--bg-panel) 100%); }
+        @keyframes toast-in { from{opacity:0;transform:translateX(20px);} to{opacity:1;transform:translateX(0);} }
+        .toast .toast-title { font-family:var(--font-display); font-weight:700; font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+        .toast.alert .toast-title { color:var(--critical-red); }
+        .toast.success .toast-title { color:var(--confirmed-green); }
+        .toast .toast-body { font-family:var(--font-mono); font-size:10px; color:var(--text-secondary); margin-top:4px; line-height:1.4; }
+
+        /* ============ GEOFENCE FLASH ============ */
+        .geofence-flash { position:fixed; top:0; left:0; width:100%; height:100%; border:3px solid var(--critical-red); pointer-events:none; z-index:9998; opacity:0; }
+        .geofence-flash.active { animation:border-flash 0.6s ease-out; }
+        @keyframes border-flash { 0%{opacity:1;} 50%{opacity:0.6;} 100%{opacity:0;} }
+    </style>
+</head>
+<body>
+    <div class="boot-screen" id="bootScreen"><div class="boot-text" id="bootText"></div></div>
+    <div class="event-selector hidden" id="eventSelector">
+        <div class="event-selector-title">E-HUZANYA GATEWAY</div>
+        <div class="event-selector-subtitle">Select a Crucible Event to simulate</div>
+        <div class="event-selector-grid">
+            <div class="event-select-card" onclick="selectEvent(1)">
+                <div class="esc-severity">P1 CRITICAL</div>
+                <div class="esc-number">01</div>
+                <div class="esc-name">Kicukiro Descent</div>
+                <div class="esc-type">RTA_WITH_HAZMAT</div>
+                <div class="esc-desc">Fuel tanker rear-ends a packed bus on the RN1 gradient. 12 casualties. Diesel spill flowing downhill toward Sonatube roundabout.</div>
+                <div class="esc-direction from-rnp">RNP → SAMU</div>
+            </div>
+            <div class="event-select-card" onclick="selectEvent(2)">
+                <div class="esc-severity">P1 CRITICAL</div>
+                <div class="esc-number">02</div>
+                <div class="esc-name">Nyabugogo Siege</div>
+                <div class="esc-type">ACTIVE_ARMED_THREAT</div>
+                <div class="esc-desc">Armed robbery at Nyabugogo Bus Terminal. Stampede and crush injuries across 3 zones. 14 casualties. Reports of gunfire.</div>
+                <div class="esc-direction from-samu">SAMU → RNP</div>
+            </div>
+            <div class="event-select-card" onclick="selectEvent(3)">
+                <div class="esc-severity">P1 CRITICAL</div>
+                <div class="esc-number">03</div>
+                <div class="esc-name">Gikondo Cloud</div>
+                <div class="esc-type">HAZMAT_RELEASE</div>
+                <div class="esc-desc">Industrial chemical fire at Gikondo. Nitrogen dioxide plume drifting northwest. 6 burn casualties. 15,000 residents at risk.</div>
+                <div class="esc-direction from-rnp">RNP → SAMU</div>
+            </div>
+        </div>
+    </div>
+    <div class="geofence-flash" id="geofenceFlash"></div>
+    <div class="toast-container" id="toastContainer"></div>
+    <div class="header-bar">
+        <div class="header-title">E-HUZANYA GATEWAY</div>
+        <div class="header-status">
+            <div class="status-indicator"><div class="status-dot"></div><span>SYSTEM OPERATIONAL</span></div>
+            <div class="header-time" id="headerTime">--:--:--</div>
+            <button class="btn-reset" onclick="resetSystem()">⟲ RESET</button>
+        </div>
+    </div>
+    <div class="main-container">
+        <div class="dispatch-panel panel-rnp">
+            <div class="panel-header"><div class="agency-badge">RNP</div><div class="panel-label">112 Dispatch Console</div></div>
+            <div class="section-label">Incoming Feed</div>
+            <div class="feed-container" id="rnpFeed"><div class="feed-empty">AWAITING DISPATCH DATA ...</div></div>
+            <div class="action-bar" id="rnpActions"></div>
+        </div>
+        <div class="map-panel">
+            <div class="map-overlay-label">SHARED TACTICAL MAP — KIGALI</div>
+            <div id="map"></div>
+        </div>
+        <div class="dispatch-panel panel-samu">
+            <div class="panel-header"><div class="agency-badge">SAMU</div><div class="panel-label">912 Dispatch Console</div></div>
+            <div class="section-label">Incoming Feed</div>
+            <div class="feed-container" id="samuFeed"><div class="feed-empty">AWAITING DISPATCH DATA ...</div></div>
+            <div class="action-bar" id="samuActions"></div>
+        </div>
+    </div>
+    <div class="bottom-bar">
+        <div class="clearance-status">
+            <span class="clearance-label">▌ Clearance Handshake</span>
+            <span class="clearance-state not-initiated" id="clearanceState">NOT INITIATED</span>
+        </div>
+        <div class="timeline-feed">
+            <span class="timeline-label">Timeline ▸</span>
+            <div class="timeline-entries" id="timelineEntries">System initialized. Select a Crucible Event to begin.</div>
+        </div>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    // ================================================================
+    // CONFIG
+    // ================================================================
+    const API_BASE = '';
+    const API_KEY = 'simulator_key_2026';
+    const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjhlMDFjYzUzMTU1OTQ5MDQ4Njg3YzhiOTRiZTk5OTYzIiwiaCI6Im11cm11cjY0In0=';
+    const HEADERS = {'Content-Type':'application/json','X-API-Key':API_KEY};
+
+    // ================================================================
+    // STATE
+    // ================================================================
+    let map;
+    let currentEvent = null;
+    let currentEhzId = null;
+    let mapMarkers = [];
+    let mapLayers = [];
+    let ws = null; // WebSocket connection
+
+    // ================================================================
+    // WEBSOCKET CONNECTION
+    // ================================================================
+    function connectWebSocket() {
+        const wsUrl = `ws://${window.location.host}/ws/stream`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('[WS] Connected');
+            ws.send(JSON.stringify({ action: 'SUBSCRIBE_ALL', agency: 'OBSERVER' }));
+        };
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            console.log('[WS]', msg.message_type || msg.status, msg);
+
+            switch (msg.message_type) {
+                case 'INCIDENT_CREATED':
+                    addTimelineEntry(`[WS] Incident ${msg.incident?.canonical_type} broadcast received.`);
+                    break;
+                case 'RESOURCE_POSITION_UPDATE':
+                    // Update vehicle marker position from server broadcast
+                    updateVehicleFromWS(msg);
+                    break;
+                case 'RESOURCE_STATUS_CHANGE':
+                    addFeedCard(
+                        msg.resource?.agency === 'RNP' ? 'rnpFeed' : 'samuFeed',
+                        msg.resource?.agency || 'RNP',
+                        `STATUS: ${msg.new_status}`,
+                        `${msg.resource?.unit_id} — ${msg.detail || ''}`
+                    );
+                    break;
+                case 'SCENE_CLEARANCE_DECLARED':
+                    addTimelineEntry(`[WS] Clearance declared by ${msg.declared_by} for ${msg.clearance_scope?.zone_id || 'scene'}.`);
+                    break;
+                case 'SCENE_CLEARANCE_ACKNOWLEDGED':
+                    addTimelineEntry(`[WS] Clearance acknowledged by ${msg.acknowledged_by}. CONFIRMED.`);
+                    break;
+                case 'RESOURCE_THREAT_WARNING':
+                    handleGeofenceWarning(msg);
+                    break;
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('[WS] Disconnected. Reconnecting in 3s...');
+            setTimeout(connectWebSocket, 3000);
+        };
+
+        ws.onerror = (err) => {
+            console.error('[WS] Error:', err);
+        };
+    }
+
+    // Track vehicle markers by unit_id for WS updates
+    let vehicleMarkerMap = {};
+
+    function updateVehicleFromWS(msg) {
+        const unitId = msg.resource?.unit_id;
+        const pos = msg.resource?.position;
+        if (!unitId || !pos) return;
+        const marker = vehicleMarkerMap[unitId];
+        if (marker) {
+            marker.setLatLng([pos.latitude, pos.longitude]);
+        }
+    }
+
+    function handleGeofenceWarning(msg) {
+        const w = msg.warning;
+        // Flash screen border
+        const flash = document.getElementById('geofenceFlash');
+        flash.classList.add('active');
+        setTimeout(() => flash.classList.remove('active'), 600);
+        // Show toast
+        showToast(
+            'GEOFENCE ALERT',
+            `${w.affected_unit} — ${w.threat_type}. ${w.instruction}. Agent: ${w.hazard_agent || 'THREAT'}`,
+            'alert'
+        );
+        addTimelineEntry(`[GEOFENCE] ${w.affected_unit}: ${w.instruction}`);
+    }
+
+    // ================================================================
+    // SVG VEHICLE ICONS
+    // ================================================================
+    const SVG_POLICE_CAR = `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="8" width="20" height="16" rx="4" fill="#0ea5e9" stroke="#0c8bc4" stroke-width="1"/>
+      <rect x="9" y="6" width="14" height="6" rx="2" fill="#0ea5e9" stroke="#0c8bc4" stroke-width="1"/>
+      <rect x="8" y="20" width="4" height="3" rx="1" fill="#064e6e"/>
+      <rect x="20" y="20" width="4" height="3" rx="1" fill="#064e6e"/>
+      <circle cx="11" cy="7" r="1.5" fill="#ef4444"><animate attributeName="opacity" values="1;0;1" dur="0.6s" repeatCount="indefinite"/></circle>
+      <circle cx="21" cy="7" r="1.5" fill="#3b82f6"><animate attributeName="opacity" values="0;1;0" dur="0.6s" repeatCount="indefinite"/></circle>
+      <rect x="13" y="11" width="6" height="5" rx="1" fill="#0c4a6e" opacity="0.6"/>
+    </svg>`;
+
+    const SVG_AMBULANCE = `<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <rect x="5" y="7" width="22" height="18" rx="4" fill="#ef4444" stroke="#dc2626" stroke-width="1"/>
+      <rect x="8" y="5" width="16" height="6" rx="2" fill="#ef4444" stroke="#dc2626" stroke-width="1"/>
+      <rect x="7" y="21" width="4" height="3" rx="1" fill="#7f1d1d"/>
+      <rect x="21" y="21" width="4" height="3" rx="1" fill="#7f1d1d"/>
+      <rect x="14" y="10" width="4" height="10" rx="0.5" fill="#ffffff" opacity="0.9"/>
+      <rect x="11" y="13" width="10" height="4" rx="0.5" fill="#ffffff" opacity="0.9"/>
+      <rect x="10" y="6" width="4" height="2" rx="0.5" fill="#fbbf24"><animate attributeName="opacity" values="1;0.3;1" dur="0.8s" repeatCount="indefinite"/></rect>
+      <rect x="18" y="6" width="4" height="2" rx="0.5" fill="#fbbf24"><animate attributeName="opacity" values="0.3;1;0.3" dur="0.8s" repeatCount="indefinite"/></rect>
+    </svg>`;
+
+    function createVehicleIcon(type, agency) {
+        const svg = (agency === 'RNP') ? SVG_POLICE_CAR : SVG_AMBULANCE;
+        return L.divIcon({
+            className: 'vehicle-icon',
+            html: `<div style="width:32px;height:32px;filter:drop-shadow(0 0 6px ${agency==='RNP'?'#0ea5e9':'#ef4444'});">${svg}</div>`,
+            iconSize: [32, 32], iconAnchor: [16, 16],
+        });
+    }
+
+    function createIncidentIcon() {
+        return L.divIcon({
+            className: 'incident-icon',
+            html: `<div style="width:16px;height:16px;background:#dc2626;border-radius:50%;border:2px solid rgba(255,255,255,0.8);box-shadow:0 0 12px #dc2626,0 0 24px rgba(220,38,38,0.4);animation:pulse-pin 1.5s ease-in-out infinite;"></div>`,
+            iconSize: [20, 20], iconAnchor: [10, 10],
+        });
+    }
+
+    // ================================================================
+    // ROUTE FETCHING (OpenRouteService)
+    // ================================================================
+    async function fetchRoute(startLat, startLng, endLat, endLng) {
+        try {
+            const res = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+                method: 'POST',
+                headers: { 'Authorization': ORS_API_KEY, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ coordinates: [[startLng, startLat], [endLng, endLat]] }),
+            });
+            const data = await res.json();
+            if (data.features && data.features[0]) {
+                return data.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+            }
+        } catch (e) { console.error('Route fetch failed:', e); }
+        // Fallback: straight line
+        return [[startLat, startLng], [endLat, endLng]];
+    }
+
+    // ================================================================
+    // CRUCIBLE EVENT PAYLOADS
+    // ================================================================
+    const EVENT_PAYLOADS = {
+        1: {
+            source: 'RNP',
+            payload: {
+                rnp_incident_id:'RNP-2026-05-27-01247', call_timestamp:new Date().toISOString(), call_source:'112',
+                incident_type:'RTA_HAZMAT', severity:'CRITICAL',
+                location:{ description:'RN1 highway descending toward Sonatube roundabout, 400m above roundabout',
+                    sector:'Kicukiro',district:'Kicukiro',province:'Kigali',
+                    coordinates:{latitude:-1.9672768928058173,longitude:30.102525315277465}, location_confidence:'CALLER_DESCRIBED', road_name:'RN1' },
+                caller:{phone_hash:'sha256:d4e7f1a2b3c8',language:'kinyarwanda',caller_type:'BYSTANDER'},
+                incident_details:{ estimated_casualties:12, vehicle_count:3,
+                    vehicle_types:['FUEL_TANKER','PUBLIC_BUS','PRIVATE_VEHICLE'],
+                    hazards_reported:['fuel_spill','road_blocked_both_lanes'],
+                    weapons_involved:false, fire_active:false,
+                    fuel_type:'DIESEL', fuel_volume_liters_est:18000, fuel_flow_direction:'DOWNHILL_TOWARD_SONATUBE' },
+                rnp_response:{ units_dispatched:[
+                    {unit_id:'RNP-TRAFFIC-KGL-14',unit_type:'TRAFFIC_PATROL',eta_minutes:8,status:'DISPATCHED'},
+                    {unit_id:'RNP-TRAFFIC-KGL-22',unit_type:'TRAFFIC_PATROL',eta_minutes:14,status:'DISPATCHED'}]},
+                rnp_restricted:{ reporting_officer_id:'RNP-OFF-4471',radio_channel:'TANGO-7',
+                    dispatch_authorization:'DUTY-CMD-KICUKIRO', intelligence_flags:[] },
+                cross_agency_request:{ agency_needed:'SAMU',request_type:'REQUEST_AMBULANCE',
+                    urgency:'IMMEDIATE',requested_units:3,reason:'12+ casualties trapped in overturned bus, fuel spill active' },
+            },
+            mapCenter:[-1.9672768928058173,30.102525315277465], mapZoom:16,
+            vehicles:{
+                rnp:{id:'RNP-TRAFFIC-KGL-14',type:'TRAFFIC_PATROL',agency:'RNP',start:[-1.9733296818818409,30.10270997145188],end:[-1.9672768928058173,30.102525315277465]},
+                samu:{id:'SAMU-AMB-KGL-012',type:'AMBULANCE',agency:'SAMU',start:[-1.9589143457994198,30.105055230361643],end:[-1.9672768928058173,30.102525315277465]},
+            },
+            clearanceScope:{zone_id:'FULL_SCENE',description:'RN1 accident scene secured, fuel spill contained'},
+        },
+        2: {
+            source: 'SAMU',
+            payload: {
+                ebanguka_case_id:'EB-912-2026-05-27-0847', call_received:new Date().toISOString(), call_source:'912',
+                medical_category:'TRAUMA_MASS_CASUALTY', triage_priority:'SEVERE', patient_count:14,
+                scene_location:{ lat: -1.9404614236629085,lng:30.048356192651006,
+                    description:'Nyabugogo Bus Terminal, eastern exit — stampede and crush injuries',
+                    sector:'Nyarugenge',district:'Nyarugenge' },
+                clinical_summary:{ mechanism_of_injury:'CRUSH_STAMPEDE',
+                    reported_injuries:['thoracic_compression','positional_asphyxia_risk','fall_fractures'],
+                    mass_casualty_triage:'NOT_YET_PERFORMED',
+                    special_considerations:'Reports of gunfire nearby — scene safety unknown' },
+                samu_response:{ ambulances_dispatched:[
+                    {unit_id:'SAMU-AMB-KGL-009',crew_type:'NURSE_ANESTHETIST',eta_minutes:7,status:'EN_ROUTE'},
+                    {unit_id:'SAMU-AMB-KGL-015',crew_type:'NURSE',eta_minutes:10,status:'EN_ROUTE'}]},
+                samu_restricted:{ lead_paramedic_id:'SAMU-PM-0334',
+                    clinical_protocol_activated:'MCI_TRIAGE_SALT',
+                    receiving_hospital_alert:{hospitals_notified:['CHUK','KIBAGABAGA'],surge_capacity_requested:true,
+                        expected_severity_mix:{red_immediate:4,yellow_delayed:6,green_minor:4}},
+                    blood_product_request:{type_o_neg_units:8,requested_from:'NATIONAL_BLOOD_BANK'} },
+                cross_agency_request:{ agency_needed:'RNP',request_type:'REQUEST_SCENE_SECURITY',
+                    urgency:'IMMEDIATE',reason:'Reports of gunfire at terminal. Ambulances cannot approach until scene secured.' },
+            },
+            mapCenter:[-1.9404614236629085, 30.048356192651006], mapZoom:16,
+            vehicles:{
+                samu:{id:'SAMU-AMB-KGL-009',type:'AMBULANCE',agency:'SAMU',start:[-1.950053309627977, 30.05882207573014],end:[-1.9404614236629085, 30.048356192651006]},
+                rnp:{id:'RNP-TAC-KGL-01',type:'TACTICAL_UNIT',agency:'RNP',start:[-1.9329052173921901, 30.049749949421507],end:[-1.9404614236629085, 30.048356192651006]},
+            },
+            clearanceScope:{zone_id:'ZONE_B',description:'Eastern exit and pedestrian bridge area — stampede zone'},
+        },
+        3: {
+            source: 'RNP',
+            payload: {
+                rnp_incident_id:'RNP-2026-05-27-01502', call_timestamp:new Date().toISOString(), call_source:'112',
+                incident_type:'FIRE_INDUSTRIAL', severity:'CRITICAL',
+                location:{ description:'Warehouse complex, Gikondo Industrial Park, near KK 21 Rd',
+                    sector:'Gikondo',district:'Kicukiro',province:'Kigali',
+                    coordinates:{latitude:-1.9683716369544841,longitude:30.080839101176462}, location_confidence:'CALLER_CONFIRMED',
+                    venue_type:'INDUSTRIAL_WAREHOUSE' },
+                caller:{phone_hash:'sha256:f2a1b7c4d8e9',language:'english',caller_type:'WAREHOUSE_WORKER'},
+                incident_details:{ estimated_casualties:6,
+                    hazards_reported:['chemical_fire','toxic_smoke','secondary_explosions'],
+                    weapons_involved:false, fire_active:true,
+                    chemical_hazard:{ identified:true, agents:['CLEANING_SOLVENTS','PAINT_THINNER','AMMONIUM_FERTILIZER'],
+                        toxic_gas_detected:'NITROGEN_DIOXIDE', visible_indicators:'Yellow-brown smoke plume' }},
+                rnp_response:{ units_dispatched:[
+                    {unit_id:'RNP-PATROL-GKD-05',unit_type:'GENERAL_PATROL',eta_minutes:5,status:'DISPATCHED'}],
+                    fire_brigade_notified:true,fire_brigade_eta:10 },
+                rnp_restricted:{ reporting_officer_id:'RNP-OFF-5567',radio_channel:'BRAVO-9',
+                    dispatch_authorization:'DUTY-CMD-KICUKIRO',
+                    intelligence_flags:['POSSIBLE_SAFETY_VIOLATION','UNLICENSED_CHEMICAL_STORAGE'],
+                    preliminary_cause:'Suspected improper chemical storage',
+                    facility_owner:'REDACTED_PENDING_INVESTIGATION', prior_safety_violations:2 },
+                cross_agency_request:{ agency_needed:'SAMU',request_type:'REQUEST_HAZMAT_MEDICAL',
+                    urgency:'IMMEDIATE',requested_units:2,reason:'6 burn casualties. Toxic NO2 plume active. HAZMAT PPE required.' },
+            },
+            mapCenter:[-1.9683716369544841, 30.080839101176462], mapZoom:15,
+            vehicles:{
+                rnp:{id:'RNP-PATROL-GKD-05',type:'GENERAL_PATROL',agency:'RNP',start:[-1.976873579062338, 30.085052912452756],end:[-1.9683716369544841, 30.080839101176462]},
+                samu:{id:'SAMU-AMB-KGL-007',type:'AMBULANCE',agency:'SAMU',start:[ -1.9794975739641827, 30.07605635782662],end:[-1.9683716369544841, 30.080839101176462]},
+            },
+            clearanceScope:{zone_id:'FULL_SCENE',description:'Chemical fire contained, safe corridor established'},
+        },
+    };
+
+    // ================================================================
+    // BOOT SEQUENCE
+    // ================================================================
+    const bootLines = [
+        '> INITIALIZING E-HUZANYA GATEWAY v0.1.0-MVP ...',
+        '> LOADING TAXONOMY MAPPING DICTIONARIES .......... OK',
+        '> CONNECTING TO TRANSLATION ENGINE ............... OK',
+        '> ACTIVATING CLINICAL FIREWALL ................... OK',
+        '> INITIALIZING GEOFENCING ENGINE ................. OK',
+        '> ESTABLISHING WEBSOCKET STREAM .................. OK',
+        '> MOUNTING LEAFLET TACTICAL MAP .................. OK',
+        '> ALL SYSTEMS OPERATIONAL', '',
+        '> E-HUZANYA GATEWAY IS ONLINE.',
+    ];
+
+    async function runBootSequence() {
+        const bootText = document.getElementById('bootText');
+        const bootScreen = document.getElementById('bootScreen');
+        for (let i = 0; i < bootLines.length; i++) {
+            const line = bootLines[i];
+            const lineEl = document.createElement('div');
+            for (let j = 0; j < line.length; j++) {
+                lineEl.textContent = line.substring(0, j + 1);
+                bootText.appendChild(lineEl);
+                if (j < line.length - 1) await sleep(8);
+            }
+            if (i === bootLines.length - 1) {
+                const cursor = document.createElement('span');
+                cursor.className = 'boot-cursor';
+                lineEl.appendChild(cursor);
+            }
+            bootText.appendChild(lineEl);
+            await sleep(150);
+        }
+        await sleep(800);
+        bootScreen.classList.add('hidden');
+        setTimeout(() => { bootScreen.remove(); showEventSelector(); }, 500);
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    function showEventSelector() { document.getElementById('eventSelector').classList.remove('hidden'); }
+
+    function selectEvent(eventId) {
+        document.getElementById('eventSelector').classList.add('hidden');
+        setTimeout(() => { document.getElementById('eventSelector').remove(); triggerEvent(eventId); }, 600);
+    }
+
+    // ================================================================
+    // MAP
+    // ================================================================
+    function initMap() {
+        map = L.map('map', { center:[-1.9650,30.1040], zoom:15, zoomControl:false });
+        L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+            attribution:'&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+            maxZoom:20 }).addTo(map);
+        L.control.zoom({position:'bottomright'}).addTo(map);
+    }
+
+    // ================================================================
+    // HELPERS
+    // ================================================================
+    function updateClock() {
+        const n=new Date(); const h=String(n.getHours()).padStart(2,'0'); const m=String(n.getMinutes()).padStart(2,'0'); const s=String(n.getSeconds()).padStart(2,'0');
+        document.getElementById('headerTime').textContent=`${h}:${m}:${s} CAT`;
+    }
+    function getTimeStr() { const n=new Date(); return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')}`; }
+    function addTimelineEntry(text) { document.getElementById('timelineEntries').textContent=`[${getTimeStr()}] ${text}`; }
+
+    function addFeedCard(feedId, fromAgency, type, detail) {
+        const feed = document.getElementById(feedId);
+        const empty = feed.querySelector('.feed-empty'); if (empty) empty.remove();
+        const card = document.createElement('div');
+        card.className = `feed-card from-${fromAgency.toLowerCase()}`;
+        card.innerHTML = `<div class="feed-type">${type}</div><div class="feed-detail">${detail}</div><div class="feed-time">${getTimeStr()} CAT</div>`;
+        feed.insertBefore(card, feed.firstChild);
+    }
+
+    function showActionButton(panelId, label, cssClass, onClick) {
+        const bar = document.getElementById(panelId); bar.innerHTML = '';
+        const btn = document.createElement('button'); btn.className=`btn-action ${cssClass}`; btn.textContent=label; btn.onclick=onClick;
+        bar.appendChild(btn); bar.classList.add('visible');
+    }
+    function hideActionBar(panelId) { const bar=document.getElementById(panelId); bar.innerHTML=''; bar.classList.remove('visible'); }
+
+    function showToast(title, body, type='alert') {
+        const container=document.getElementById('toastContainer');
+        const toast=document.createElement('div'); toast.className=`toast ${type}`;
+        toast.innerHTML=`<div class="toast-title">${title}</div><div class="toast-body">${body}</div>`;
+        container.appendChild(toast);
+        setTimeout(()=>{toast.style.opacity='0';toast.style.transform='translateX(20px)';toast.style.transition='all 0.3s';setTimeout(()=>toast.remove(),300);},5000);
+    }
+
+    // ================================================================
+    // VEHICLE ANIMATION ALONG ROUTE
+    // ================================================================
+    function animateAlongRoute(routeCoords, vehicle, onComplete) {
+        const icon = createVehicleIcon(vehicle.type, vehicle.agency);
+        const marker = L.marker(routeCoords[0], { icon, rotationOrigin:'center center' }).addTo(map);
+        mapMarkers.push(marker);
+        vehicleMarkerMap[vehicle.id] = marker;
+
+        // Calculate total distance
+        let totalDist = 0;
+        const segDists = [];
+        for (let i = 1; i < routeCoords.length; i++) {
+            const d = map.distance(routeCoords[i-1], routeCoords[i]);
+            segDists.push(d);
+            totalDist += d;
+        }
+
+        const duration = 15000;
+        const startTime = Date.now();
+        let lastApiUpdate = 0;
+
+        function step() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            const targetDist = eased * totalDist;
+
+            let currentLat = routeCoords[0][0];
+            let currentLng = routeCoords[0][1];
+
+            let accumulated = 0;
+            for (let i = 0; i < segDists.length; i++) {
+                if (accumulated + segDists[i] >= targetDist) {
+                    const segProgress = (targetDist - accumulated) / segDists[i];
+                    currentLat = routeCoords[i][0] + (routeCoords[i+1][0] - routeCoords[i][0]) * segProgress;
+                    currentLng = routeCoords[i][1] + (routeCoords[i+1][1] - routeCoords[i][1]) * segProgress;
+                    marker.setLatLng([currentLat, currentLng]);
+                    break;
+                }
+                accumulated += segDists[i];
+            }
+
+            // Send position update to API every 1.5 seconds (for WS broadcast + geofencing)
+            if (elapsed - lastApiUpdate > 1500) {
+                lastApiUpdate = elapsed;
+                const eta = Math.max(0, Math.round((1 - progress) * 9));
+                fetch(`${API_BASE}/api/v1/resources/position`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+                    body: JSON.stringify({
+                        unit_id: vehicle.id,
+                        agency: vehicle.agency,
+                        resource_type: vehicle.type,
+                        latitude: currentLat,
+                        longitude: currentLng,
+                        speed_kmh: 45,
+                        status: 'EN_ROUTE',
+                        incident_id: currentEhzId || '',
+                        eta_minutes: eta,
+                    }),
+                }).catch(e => console.error('Position update failed:', e));
+            }
+
+            if (progress < 1) { requestAnimationFrame(step); }
+            else {
+                // Send final ON_SCENE status
+                fetch(`${API_BASE}/api/v1/resources/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+                    body: JSON.stringify({
+                        unit_id: vehicle.id,
+                        agency: vehicle.agency,
+                        resource_type: vehicle.type,
+                        incident_id: currentEhzId || '',
+                        previous_status: 'EN_ROUTE',
+                        new_status: 'ON_SCENE',
+                        detail: `${vehicle.id} arrived at incident location.`,
+                    }),
+                }).catch(e => console.error('Status update failed:', e));
+                if (onComplete) onComplete(marker);
+            }
+        }
+        requestAnimationFrame(step);
+        return marker;
+    }
+
+    // ================================================================
+    // CLICK 1: LOG INCIDENT
+    // ================================================================
+    async function triggerEvent(eventId) {
+        if (currentEvent) { showToast('EVENT ACTIVE','Reset before triggering a new event.','alert'); return; }
+        const event = EVENT_PAYLOADS[eventId]; if (!event) return;
+        currentEvent = eventId;
+
+        const headers = {...HEADERS, 'X-EHZ-Source-Agency': event.source};
+        try {
+            const res = await fetch(`${API_BASE}/api/v1/incidents/ingest`, { method:'POST', headers, body:JSON.stringify(event.payload) });
+            const data = await res.json();
+            currentEhzId = data.ehz_incident_id;
+
+            map.flyTo(event.mapCenter, event.mapZoom, {duration:1.5});
+            const pin = L.marker(event.mapCenter, {icon:createIncidentIcon()}).addTo(map);
+            pin.bindTooltip(`<div style="font-family:'Oxanium',sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;">${data.canonical_type}<br><span style="color:#ef4444;">SEVERITY: ${data.canonical_severity}</span></div>`,
+                {permanent:false,direction:'top',className:'tactical-tooltip'});
+            mapMarkers.push(pin);
+
+            const pulseCircle = L.circle(event.mapCenter,{radius:100,color:'#dc2626',fillColor:'#dc2626',fillOpacity:0.1,weight:1}).addTo(map);
+            mapLayers.push(pulseCircle);
+
+            const destFeedId = event.source==='RNP' ? 'samuFeed' : 'rnpFeed';
+            const dp = data.destination_payload;
+            const incLabel = dp.incident_category||dp.incident_type||data.canonical_type;
+            const sev = dp.triage_priority||dp.severity||data.canonical_severity;
+            const cas = dp.patient_estimate||dp.estimated_casualties||'—';
+            const loc = dp.scene_location?.description||dp.location?.description||'—';
+            addFeedCard(destFeedId, event.source, `TRANSLATED: ${incLabel}`,
+                `Severity: ${sev} | Casualties: ${cas}<br>Location: ${loc}<br>Firewall: ${data.pipeline_summary.fields_stripped.length} fields stripped`);
+
+            addTimelineEntry(`${event.source} reported ${data.canonical_type}. Translated → ${data.destination_agency}.`);
+            showToast('INCIDENT LOGGED',`${data.canonical_type} — ${currentEhzId}`,'success');
+
+            const srcActions = event.source==='RNP' ? 'rnpActions' : 'samuActions';
+            showActionButton(srcActions, '▶ DISPATCH UNITS', 'btn-dispatch', ()=>dispatchUnits(eventId));
+        } catch(err) { showToast('API ERROR',err.message,'alert'); currentEvent=null; }
+    }
+
+    // ================================================================
+    // CLICK 2: DISPATCH UNITS
+    // ================================================================
+    async function dispatchUnits(eventId) {
+        const event = EVENT_PAYLOADS[eventId];
+        const srcActions = event.source==='RNP' ? 'rnpActions' : 'samuActions';
+        hideActionBar(srcActions);
+        addTimelineEntry('Units dispatched. Resources en route.');
+
+        const srcFeed = event.source==='RNP' ? 'rnpFeed' : 'samuFeed';
+        let arrivedCount = 0;
+        const totalV = Object.keys(event.vehicles).length;
+
+        for (const [key, vehicle] of Object.entries(event.vehicles)) {
+            addFeedCard(srcFeed, vehicle.agency, `DISPATCHED: ${vehicle.id}`, `Type: ${vehicle.type} | EN_ROUTE`);
+
+            // Fetch real road route
+            const routeCoords = await fetchRoute(vehicle.start[0],vehicle.start[1],vehicle.end[0],vehicle.end[1]);
+
+            // Draw route polyline
+            const color = vehicle.agency==='RNP' ? '#0ea5e9' : '#ef4444';
+            const routeLine = L.polyline(routeCoords, {color:color,weight:3,opacity:0.6,dashArray:'8,6'}).addTo(map);
+            mapLayers.push(routeLine);
+
+            // Animate vehicle along route
+            animateAlongRoute(routeCoords, vehicle, (marker) => {
+                arrivedCount++;
+                addTimelineEntry(`${vehicle.id} arrived at destination.`);
+                if (arrivedCount === 1) {
+                    showActionButton('rnpActions','▶ CONFIRM UNIT ON SCENE','btn-arrived',()=>unitArrived(eventId));
+                }
+            });
+        }
+        showToast('UNITS DISPATCHED',`${totalV} units en route`,'success');
+    }
+
+    // ================================================================
+    // CLICK 3: UNIT ARRIVED
+    // ================================================================
+    async function unitArrived(eventId) {
+        const event = EVENT_PAYLOADS[eventId];
+        hideActionBar('rnpActions');
+        addTimelineEntry('RNP unit on scene. Initiating clearance handshake.');
+
+        try {
+            await fetch(`${API_BASE}/api/v1/incidents/${currentEhzId}/clearance/declare`, {
+                method:'POST', headers:HEADERS,
+                body:JSON.stringify({declaring_agency:'RNP',scope:event.clearanceScope}),
+            });
+            const stateEl = document.getElementById('clearanceState');
+            stateEl.textContent='AWAITING ACKNOWLEDGMENT'; stateEl.className='clearance-state awaiting';
+            showActionButton('samuActions','✓ ACKNOWLEDGE CLEARANCE','btn-clearance-ack',()=>acknowledgeClearance(eventId));
+            addTimelineEntry(`RNP declared clearance for ${event.clearanceScope.zone_id}. Awaiting SAMU.`);
+            showToast('CLEARANCE DECLARED',`${event.clearanceScope.zone_id} — Awaiting SAMU`,'alert');
+        } catch(err) { showToast('API ERROR',err.message,'alert'); }
+    }
+
+    // ================================================================
+    // CLICK 4: ACKNOWLEDGE CLEARANCE
+    // ================================================================
+    async function acknowledgeClearance(eventId) {
+        const event = EVENT_PAYLOADS[eventId];
+        hideActionBar('samuActions');
+        try {
+            await fetch(`${API_BASE}/api/v1/incidents/${currentEhzId}/clearance/acknowledge`, {
+                method:'POST', headers:HEADERS,
+                body:JSON.stringify({acknowledging_agency:'SAMU'}),
+            });
+            const stateEl = document.getElementById('clearanceState');
+            stateEl.textContent='CONFIRMED — MEDICAL ACCESS AUTHORIZED'; stateEl.className='clearance-state confirmed';
+            mapLayers.forEach(l=>{ if(l instanceof L.Circle) l.setStyle({color:'#22c55e',fillColor:'#22c55e'}); });
+            addTimelineEntry('SAMU acknowledged clearance. Medical access AUTHORIZED.');
+            showToast('CLEARANCE CONFIRMED','Medical access authorized. Ambulances advancing.','success');
+            addFeedCard('samuFeed','RNP','CLEARANCE CONFIRMED',`Scope: ${event.clearanceScope.zone_id}<br>Medical access: AUTHORIZED`);
+            addFeedCard('rnpFeed','SAMU','CLEARANCE ACKNOWLEDGED','SAMU confirmed. Ambulances advancing to scene.');
+        } catch(err) { showToast('API ERROR',err.message,'alert'); }
+    }
+
+    // ================================================================
+    // RESET
+    // ================================================================
+    function resetSystem() {
+        currentEvent=null; currentEhzId=null;
+        mapMarkers.forEach(m=>map.removeLayer(m)); mapLayers.forEach(l=>map.removeLayer(l));
+        mapMarkers=[]; mapLayers=[]; vehicleMarkerMap={};
+        map.flyTo([-1.9650,30.1040],15,{duration:1});
+        document.getElementById('samuFeed').innerHTML='<div class="feed-empty">AWAITING DISPATCH DATA ...</div>';
+        document.getElementById('rnpFeed').innerHTML='<div class="feed-empty">AWAITING DISPATCH DATA ...</div>';
+        document.getElementById('clearanceState').textContent='NOT INITIATED';
+        document.getElementById('clearanceState').className='clearance-state not-initiated';
+        document.getElementById('timelineEntries').textContent='System reset. Select a Crucible Event to begin.';
+        hideActionBar('rnpActions'); hideActionBar('samuActions');
+        document.getElementById('toastContainer').innerHTML='';
+        fetch(`${API_BASE}/api/v1/simulator/inbox/SAMU`,{method:'DELETE',headers:HEADERS});
+        fetch(`${API_BASE}/api/v1/simulator/inbox/RNP`,{method:'DELETE',headers:HEADERS});
+        // Re-show event selector
+        const sel = document.createElement('div'); sel.className='event-selector'; sel.id='eventSelector';
+        sel.innerHTML=`<div class="event-selector-title">E-HUZANYA GATEWAY</div>
+            <div class="event-selector-subtitle">Select a Crucible Event to simulate</div>
+            <div class="event-selector-grid">
+                <div class="event-select-card" onclick="selectEvent(1)"><div class="esc-severity">P1 CRITICAL</div><div class="esc-number">01</div><div class="esc-name">Kicukiro Descent</div><div class="esc-type">RTA_WITH_HAZMAT</div><div class="esc-desc">Fuel tanker rear-ends a packed bus on the RN1 gradient. 12 casualties. Diesel spill.</div><div class="esc-direction from-rnp">RNP → SAMU</div></div>
+                <div class="event-select-card" onclick="selectEvent(2)"><div class="esc-severity">P1 CRITICAL</div><div class="esc-number">02</div><div class="esc-name">Nyabugogo Siege</div><div class="esc-type">ACTIVE_ARMED_THREAT</div><div class="esc-desc">Armed robbery at bus terminal. Stampede. 14 casualties. Reports of gunfire.</div><div class="esc-direction from-samu">SAMU → RNP</div></div>
+                <div class="event-select-card" onclick="selectEvent(3)"><div class="esc-severity">P1 CRITICAL</div><div class="esc-number">03</div><div class="esc-name">Gikondo Cloud</div><div class="esc-type">HAZMAT_RELEASE</div><div class="esc-desc">Industrial chemical fire. NO₂ plume. 6 burn casualties. 15,000 at risk.</div><div class="esc-direction from-rnp">RNP → SAMU</div></div>
+            </div>`;
+        document.body.appendChild(sel);
+        showToast('SYSTEM RESET','Ready for new event.','success');
+    }
+
+    // ================================================================
+    // INIT
+    // ================================================================
+    document.addEventListener('DOMContentLoaded', async () => {
+        initMap(); updateClock(); setInterval(updateClock,1000);
+        connectWebSocket();
+        await runBootSequence();
+    });
+    </script>
+</body>
+</html>
